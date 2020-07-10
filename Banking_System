@@ -1,0 +1,142 @@
+import random
+import sqlite3
+
+
+connection = sqlite3.connect('card.s3db')
+cursor = connection.cursor()
+
+#Create table
+cursor.execute('DROP TABLE card;')
+cursor.execute('''CREATE TABLE IF NOT EXISTS card (
+id INTEGER,
+number TEXT,
+pin TEXT,
+balance INTEGER DEFAULT 0);''')
+connection.commit()
+
+
+cards_storage = {}
+logged = None
+balance = 0
+
+
+def gen_rand_number_given_size(digit_size):
+    return ''.join(['{}'.format(random.randint(0, 9)) for num in range(0, digit_size)])
+
+
+action = None
+while action != 0:
+    action = int(input('1. Create an account\n2. Log into account\n0. Exit\n'))
+    if action == 1:
+        word = ''
+        sum_ = 0
+        counter = -1
+
+        card_id = f'400000{gen_rand_number_given_size(9)}'
+        for letter in card_id:
+            letter = int(letter)
+            if counter == -1:
+                letter *= 2
+                if letter > 9:
+                    letter -= 9
+            elif counter == 1:
+                letter = letter
+            counter = -counter
+            word += str(letter)
+        for digit in word:
+            sum_ += int(digit)
+            last_digit = 10 - (sum_ % 10)
+            if last_digit is 10:
+                last_digit = 0
+
+        card_id = f'{card_id}{last_digit}'
+        card_password = f'{gen_rand_number_given_size(4)}'
+
+        print('\nYour card has been created')
+        print('Your card number:')
+        print(card_id)
+        print('Your card PIN:')
+        print(card_password)
+        cursor.execute("INSERT INTO card VALUES (?, ?, ?, ?);", (int(card_id), card_id, card_password, 0))
+        cursor.execute("SELECT * FROM card")
+        cards = cursor.fetchall()
+
+
+    if action == 2:
+
+        login_card_number = int(input('Enter your card number:\n'))
+        login_card_pin = int(input('Enter your PIN:\n'))
+
+        for card in cards:
+            if int(card[1]) == login_card_number and int(card[2]) == login_card_pin:
+                print('\nYou have successfully logged in!\n')
+                logged = True
+                login_balance = card[3]
+                break
+            elif int(card[1]) != login_card_number or int(card[2]) != login_card_pin:
+                print('\nWrong card number or PIN!\n')
+                logged = False
+                break
+
+        while logged is True:
+            logged_action = int(input('1.Balance\n2.Add income\n3.Do transfer\n4.Close account\n5.Log out\n0.Exit\n'))
+            if logged_action == 1:
+                print(f'Balance: {login_balance}\n')
+
+            if logged_action == 2:
+                add_income = int(input(f'Enter income:\n'))
+                login_balance += add_income
+                cursor.execute("UPDATE card SET balance = ? WHERE number = ?", (int(login_balance), login_card_number))
+                #cards = cursor.fetchall()
+                connection.commit()
+                print('Income was added!\n', cards)
+
+            if logged_action == 3:
+                transfer_number = input('\nTransfer\nEnter card number:\n')
+                word = ''
+                sum_ = 0
+                counter = -1
+
+                for letter in transfer_number:
+                    letter = int(letter)
+                    if counter == -1:
+                        letter *= 2
+                        if letter > 9:
+                            letter -= 9
+                    elif counter == 1:
+                        letter = letter
+                    counter = -counter
+                    word += str(letter)
+                for digit in word:
+                    sum_ += int(digit)
+                if sum_ % 10 is 0:
+                    if any((transfer_number in sl) for sl in cards):
+                        transfer_money = int(input("Enter how much money you want to transfer:\n"))
+                        cursor.execute('SELECT balance FROM card WHERE number = ?', (transfer_number,))
+                        transfer_balance = cursor.fetchone()
+                        transfer_balance = transfer_balance[0]
+                        connection.commit()
+                        if transfer_money <= login_balance:
+                            login_balance -= transfer_money
+                            transfer_balance += int(transfer_money)
+                            cursor.execute('UPDATE card SET balance = ? WHERE number = ?', (login_balance, login_card_number))
+                            connection.commit()
+                            cursor.execute("UPDATE card SET balance = ? WHERE number = ?", (transfer_balance, transfer_number))
+                            connection.commit()
+                            print("Success!")
+                        else:
+                            print("Not enough money!")
+                    else:
+                        print('Such a card does not exist.', )
+                else:
+                    print("Probably you made mistake in card number. Please try again!\n")
+
+            if logged_action == 4:
+                print(f'Balance: {balance}\n')
+            if logged_action == 5:
+                logged = False
+            if logged_action == 0:
+                action = 0
+                logged = False
+connection.commit()
+print('Bye!')
